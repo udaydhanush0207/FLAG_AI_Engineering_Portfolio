@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <b>Built by <a href="https://www.linkedin.com/in/uday-karri/">Uday Karri</a></b> | MS Data Analytics & Information Systems, Texas State University<br>
+  <b>Built by <a href="https://www.linkedin.com/in/venkatsatyaudaydhanushkarri/">Uday Dhanush Karri</a></b> | MS Data Analytics & Information Systems, Texas State University<br>
   Graduate Intern at <a href="https://frontlineadvisorygroup.com">Front Line Advisory Group (FLAG)</a>
 </p>
 
