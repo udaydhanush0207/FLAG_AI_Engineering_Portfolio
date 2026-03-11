@@ -1,0 +1,41 @@
+# Environment variables (API keys)
+.env
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+venv/
+.venv/
+
+# Node
+node_modules/
+dist/
+build/
+
+# ChromaDB data
+chroma_data/
+*.db
+
+# Docker
+docker-compose.override.yml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# Sensitive data
+*.key
+*.pem
+data/scraped/
