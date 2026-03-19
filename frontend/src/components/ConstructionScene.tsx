@@ -1,274 +1,283 @@
-import { useRef, useMemo } from 'react'
-import { Canvas, useFrame } from '@react-three/fiber'
-import { OrbitControls, Float } from '@react-three/drei'
+import { useRef, useMemo, useEffect } from 'react'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
+import { Float } from '@react-three/drei'
 import * as THREE from 'three'
 
-// ── Building component ────────────────────────────────────────────────────────
-interface BuildingProps {
-  position: [number, number, number]
-  height: number
-  color: string
-  label?: string
-}
+// ── Mouse tracker ─────────────────────────────────────────────────────────────
+const mouseWorld = { x: 0, y: 0 }
 
-function Building({ position, height, color }: BuildingProps) {
-  const meshRef = useRef<THREE.Mesh>(null!)
-  const windowsRef = useRef<THREE.InstancedMesh>(null!)
+// ── Camera rig with mouse parallax ───────────────────────────────────────────
+function CameraRig() {
+  const { camera } = useThree()
+  const target = useRef({ x: 0, y: 6, z: 13 })
 
-  const windowPositions = useMemo(() => {
-    const positions: THREE.Matrix4[] = []
-    const rows = Math.floor(height * 2)
-    const cols = 2
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        const m = new THREE.Matrix4()
-        m.setPosition(
-          (c - 0.5) * 0.35,
-          0.5 + r * 0.5 - height / 2,
-          0.51
-        )
-        positions.push(m)
-      }
-    }
-    return positions
-  }, [height])
-
-  return (
-    <group position={position}>
-      {/* Main structure */}
-      <mesh ref={meshRef} castShadow receiveShadow>
-        <boxGeometry args={[1, height, 1]} />
-        <meshStandardMaterial
-          color={color}
-          metalness={0.3}
-          roughness={0.7}
-          emissive={new THREE.Color(color)}
-          emissiveIntensity={0.05}
-        />
-      </mesh>
-
-      {/* Gold roof accent */}
-      <mesh position={[0, height / 2 + 0.05, 0]}>
-        <boxGeometry args={[1.05, 0.08, 1.05]} />
-        <meshStandardMaterial
-          color="#C9A227"
-          metalness={0.8}
-          roughness={0.2}
-          emissive="#C9A227"
-          emissiveIntensity={0.3}
-        />
-      </mesh>
-
-      {/* Windows */}
-      {windowPositions.length > 0 && (
-        <instancedMesh ref={windowsRef} args={[undefined, undefined, windowPositions.length]}>
-          <planeGeometry args={[0.2, 0.25]} />
-          <meshStandardMaterial
-            color="#7ECFFF"
-            emissive="#4AA8E8"
-            emissiveIntensity={0.6}
-            transparent
-            opacity={0.8}
-          />
-          {/* matrices applied via InstanceSetter below */}
-        </instancedMesh>
-      )}
-      {/* Programmatically set instance matrices */}
-      <InstanceSetter mesh={windowsRef} matrices={windowPositions} />
-    </group>
-  )
-}
-
-function InstanceSetter({
-  mesh,
-  matrices,
-}: {
-  mesh: React.RefObject<THREE.InstancedMesh>
-  matrices: THREE.Matrix4[]
-}) {
   useFrame(() => {
-    if (!mesh.current) return
-    matrices.forEach((m, i) => {
-      mesh.current!.setMatrixAt(i, m)
-    })
-    mesh.current.instanceMatrix.needsUpdate = true
+    target.current.x = mouseWorld.x * 1.8
+    target.current.y = 6 + mouseWorld.y * 0.6
+
+    camera.position.x += (target.current.x - camera.position.x) * 0.04
+    camera.position.y += (target.current.y - camera.position.y) * 0.04
+    camera.lookAt(0, 1.5, 0)
   })
   return null
 }
 
-// ── Crane ─────────────────────────────────────────────────────────────────────
-function Crane({ isProcessing }: { isProcessing: boolean }) {
-  const craneRef = useRef<THREE.Group>(null!)
+// ── Building ──────────────────────────────────────────────────────────────────
+interface BuildingProps {
+  position: [number, number, number]
+  height: number
+  color: string
+  emissive?: string
+}
 
-  useFrame((_, delta) => {
-    if (craneRef.current) {
-      const speed = isProcessing ? 0.8 : 0.2
-      craneRef.current.rotation.y += delta * speed
-    }
-  })
+function Building({ position, height, color, emissive = '#062052' }: BuildingProps) {
+  const meshRef   = useRef<THREE.Mesh>(null!)
+  const edgeRef   = useRef<THREE.LineSegments>(null!)
+
+  const geo    = useMemo(() => new THREE.BoxGeometry(1, height, 1), [height])
+  const edgeGeo = useMemo(() => new THREE.EdgesGeometry(geo), [geo])
 
   return (
-    <group ref={craneRef} position={[-4, 0, -2]}>
-      {/* Mast */}
-      <mesh position={[0, 2.5, 0]} castShadow>
-        <boxGeometry args={[0.18, 5, 0.18]} />
-        <meshStandardMaterial color="#C9A227" metalness={0.7} roughness={0.3} />
+    <group position={[position[0], position[1] + height / 2, position[2]]}>
+      {/* Body */}
+      <mesh ref={meshRef} geometry={geo} castShadow receiveShadow>
+        <meshStandardMaterial
+          color={color}
+          emissive={new THREE.Color(emissive)}
+          emissiveIntensity={0.08}
+          metalness={0.2}
+          roughness={0.8}
+        />
       </mesh>
-      {/* Boom (horizontal arm) */}
-      <mesh position={[1.5, 5, 0]} castShadow>
-        <boxGeometry args={[3, 0.14, 0.14]} />
-        <meshStandardMaterial color="#C9A227" metalness={0.7} roughness={0.3} />
+
+      {/* Gold edges */}
+      <lineSegments ref={edgeRef} geometry={edgeGeo}>
+        <lineBasicMaterial color="#C9A227" transparent opacity={0.35} />
+      </lineSegments>
+
+      {/* Roof glow plane */}
+      <mesh position={[0, height / 2 + 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[1.02, 1.02]} />
+        <meshBasicMaterial color="#C9A227" transparent opacity={0.25} />
       </mesh>
-      {/* Counter boom */}
-      <mesh position={[-0.8, 5, 0]} castShadow>
-        <boxGeometry args={[1.6, 0.12, 0.12]} />
-        <meshStandardMaterial color="#7A6018" metalness={0.6} roughness={0.4} />
-      </mesh>
-      {/* Hook cable */}
-      <mesh position={[2.5, 4.1, 0]}>
-        <boxGeometry args={[0.03, 1.8, 0.03]} />
-        <meshStandardMaterial color="#94A3B8" />
-      </mesh>
-      {/* Hook */}
-      <mesh position={[2.5, 3.2, 0]}>
-        <boxGeometry args={[0.2, 0.2, 0.2]} />
-        <meshStandardMaterial color="#C9A227" metalness={0.9} roughness={0.1} />
-      </mesh>
+
+      {/* Window rows */}
+      {Array.from({ length: Math.floor(height * 1.5) }, (_, r) => (
+        <group key={r} position={[0, -height / 2 + 0.6 + r * 0.65, 0]}>
+          {[-0.22, 0.22].map((x, c) => (
+            <mesh key={c} position={[x, 0, 0.51]}>
+              <planeGeometry args={[0.2, 0.28]} />
+              <meshBasicMaterial
+                color={Math.random() > 0.3 ? '#7ECFFF' : '#1A3A6A'}
+                transparent opacity={0.85}
+              />
+            </mesh>
+          ))}
+        </group>
+      ))}
     </group>
   )
 }
 
-// ── Gold particles ─────────────────────────────────────────────────────────────
-function GoldParticles() {
-  const count = 120
-  const pointsRef = useRef<THREE.Points>(null!)
+// ── Crane ─────────────────────────────────────────────────────────────────────
+function Crane({ isProcessing }: { isProcessing: boolean }) {
+  const armRef  = useRef<THREE.Group>(null!)
+  const speed   = useRef(0.25)
 
-  const { positions, velocities } = useMemo(() => {
-    const pos = new Float32Array(count * 3)
-    const vel = new Float32Array(count * 3)
-    for (let i = 0; i < count; i++) {
-      pos[i * 3]     = (Math.random() - 0.5) * 16
-      pos[i * 3 + 1] = Math.random() * 8
-      pos[i * 3 + 2] = (Math.random() - 0.5) * 16
-      vel[i * 3]     = (Math.random() - 0.5) * 0.02
-      vel[i * 3 + 1] = 0.015 + Math.random() * 0.02
-      vel[i * 3 + 2] = (Math.random() - 0.5) * 0.02
-    }
-    return { positions: pos, velocities: vel }
-  }, [])
-
-  useFrame(() => {
-    if (!pointsRef.current) return
-    const geo = pointsRef.current.geometry
-    const pos = geo.attributes.position.array as Float32Array
-    for (let i = 0; i < count; i++) {
-      pos[i * 3]     += velocities[i * 3]
-      pos[i * 3 + 1] += velocities[i * 3 + 1]
-      pos[i * 3 + 2] += velocities[i * 3 + 2]
-      if (pos[i * 3 + 1] > 9) {
-        pos[i * 3]     = (Math.random() - 0.5) * 16
-        pos[i * 3 + 1] = -0.5
-        pos[i * 3 + 2] = (Math.random() - 0.5) * 16
-      }
-    }
-    geo.attributes.position.needsUpdate = true
+  useFrame((_, dt) => {
+    const target = isProcessing ? 1.2 : 0.25
+    speed.current += (target - speed.current) * 0.02
+    if (armRef.current) armRef.current.rotation.y += dt * speed.current
   })
 
   return (
-    <points ref={pointsRef}>
+    <group position={[-4.5, 0, -1]}>
+      {/* Mast */}
+      <mesh position={[0, 3, 0]} castShadow>
+        <boxGeometry args={[0.18, 6, 0.18]} />
+        <meshStandardMaterial color="#C9A227" metalness={0.8} roughness={0.2}
+          emissive="#C9A227" emissiveIntensity={0.15} />
+      </mesh>
+
+      {/* Rotating arm group */}
+      <group ref={armRef} position={[0, 6, 0]}>
+        {/* Boom arm */}
+        <mesh position={[1.8, 0, 0]}>
+          <boxGeometry args={[3.6, 0.12, 0.12]} />
+          <meshStandardMaterial color="#C9A227" metalness={0.7} roughness={0.3}
+            emissive="#C9A227" emissiveIntensity={0.1} />
+        </mesh>
+        {/* Counter-arm */}
+        <mesh position={[-0.9, 0, 0]}>
+          <boxGeometry args={[1.8, 0.1, 0.1]} />
+          <meshStandardMaterial color="#7A6018" metalness={0.6} roughness={0.4} />
+        </mesh>
+        {/* Cable */}
+        <mesh position={[3, -0.9, 0]}>
+          <boxGeometry args={[0.02, 1.8, 0.02]} />
+          <meshStandardMaterial color="#94A3B8" />
+        </mesh>
+        {/* Hook */}
+        <mesh position={[3, -1.85, 0]}>
+          <boxGeometry args={[0.18, 0.18, 0.18]} />
+          <meshStandardMaterial color="#C9A227" metalness={0.9} roughness={0.1}
+            emissive="#C9A227" emissiveIntensity={0.3} />
+        </mesh>
+      </group>
+    </group>
+  )
+}
+
+// ── Gold particle system ───────────────────────────────────────────────────────
+function Sparks() {
+  const ref   = useRef<THREE.Points>(null!)
+  const count = 50
+
+  const { positions, velocities, opacities } = useMemo(() => {
+    const pos = new Float32Array(count * 3)
+    const vel = new Float32Array(count * 3)
+    const opa = new Float32Array(count)
+    for (let i = 0; i < count; i++) {
+      pos[i * 3]     = (Math.random() - 0.5) * 18
+      pos[i * 3 + 1] = Math.random() * 8
+      pos[i * 3 + 2] = (Math.random() - 0.5) * 14
+      vel[i * 3]     = (Math.random() - 0.5) * 0.012
+      vel[i * 3 + 1] = 0.018 + Math.random() * 0.025
+      vel[i * 3 + 2] = (Math.random() - 0.5) * 0.012
+      opa[i]         = 0.3 + Math.random() * 0.7
+    }
+    return { positions: pos, velocities: vel, opacities: opa }
+  }, [])
+
+  useFrame(() => {
+    if (!ref.current) return
+    const p = ref.current.geometry.attributes.position.array as Float32Array
+    for (let i = 0; i < count; i++) {
+      p[i * 3]     += velocities[i * 3]
+      p[i * 3 + 1] += velocities[i * 3 + 1]
+      p[i * 3 + 2] += velocities[i * 3 + 2]
+      if (p[i * 3 + 1] > 9) {
+        p[i * 3]     = (Math.random() - 0.5) * 18
+        p[i * 3 + 1] = 0
+        p[i * 3 + 2] = (Math.random() - 0.5) * 14
+      }
+    }
+    ref.current.geometry.attributes.position.needsUpdate = true
+  })
+
+  return (
+    <points ref={ref}>
       <bufferGeometry>
         <bufferAttribute attach="attributes-position" args={[positions, 3]} />
+        <bufferAttribute attach="attributes-opacity"  args={[opacities, 1]} />
       </bufferGeometry>
       <pointsMaterial
         color="#C9A227"
-        size={0.06}
+        size={0.07}
         sizeAttenuation
         transparent
-        opacity={0.7}
+        opacity={0.85}
         depthWrite={false}
+        vertexColors={false}
       />
     </points>
   )
 }
 
-// ── Ground grid ────────────────────────────────────────────────────────────────
+// ── Ground + grid ─────────────────────────────────────────────────────────────
 function Ground() {
+  const lineGeo = useMemo(() => {
+    const geo = new THREE.BufferGeometry()
+    const verts: number[] = []
+    const size = 20, step = 2
+    for (let i = -size; i <= size; i += step) {
+      verts.push(-size, 0.02, i, size, 0.02, i)
+      verts.push(i, 0.02, -size, i, 0.02, size)
+    }
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(verts), 3))
+    return geo
+  }, [])
+
   return (
     <>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow position={[0, -0.01, 0]}>
-        <planeGeometry args={[30, 30]} />
-        <meshStandardMaterial
-          color="#060D1B"
-          metalness={0.1}
-          roughness={0.9}
-        />
+      <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow position={[0, 0, 0]}>
+        <planeGeometry args={[40, 40]} />
+        <meshStandardMaterial color="#060D1B" metalness={0.1} roughness={0.95} />
       </mesh>
-      <gridHelper args={[28, 28, '#162440', '#0D1829']} position={[0, 0.01, 0]} />
+      <lineSegments geometry={lineGeo}>
+        <lineBasicMaterial color="#C9A227" transparent opacity={0.06} />
+      </lineSegments>
     </>
   )
 }
 
-// ── Scene ─────────────────────────────────────────────────────────────────────
-function Scene({ isProcessing }: { isProcessing: boolean }) {
-  const buildings = [
-    { position: [-1, 0, 0.5] as [number,number,number], height: 5.0, color: '#062052', label: 'Travis County' },
-    { position: [1.5, 0, -0.5] as [number,number,number], height: 4.0, color: '#0A2B6E', label: 'Harris County' },
-    { position: [3, 0, 1] as [number,number,number], height: 3.5, color: '#0C2255', label: 'Bexar County' },
-    { position: [0.5, 0, -2] as [number,number,number], height: 2.8, color: '#091B45', label: 'Tarrant County' },
-    { position: [2, 0, -2.5] as [number,number,number], height: 1.8, color: '#071538', label: 'Collin County' },
-  ]
+// ── Scene ──────────────────────────────────────────────────────────────────────
+const BUILDINGS = [
+  { position: [-0.5, 0, 0.5]  as [number,number,number], height: 5.5, color: '#062052', label: 'NY $4.2B'      },
+  { position: [1.8,  0, -0.3] as [number,number,number], height: 4.8, color: '#071B45', label: 'Travis $3.5B'  },
+  { position: [3.2,  0, 1.2]  as [number,number,number], height: 3.8, color: '#0A1E4A', label: 'Harris $1.5B'  },
+  { position: [0.8,  0, -2.0] as [number,number,number], height: 2.8, color: '#091840', label: 'Bexar $800M'   },
+  { position: [2.6,  0, -2.2] as [number,number,number], height: 2.0, color: '#081435', label: 'McLennan $300M'},
+  { position: [-1.8, 0, -1.5] as [number,number,number], height: 1.2, color: '#071030', label: 'Travis 2011'   },
+]
 
+function Scene({ isProcessing }: { isProcessing: boolean }) {
   return (
     <>
-      {/* Environment lighting */}
-      <ambientLight intensity={0.3} color="#1A2A4A" />
+      <fog attach="fog" args={['#060D1B', 18, 42]} />
+      <ambientLight intensity={0.4} color="#1A2A4A" />
       <directionalLight
-        position={[8, 12, 6]}
-        intensity={1.2}
+        position={[8, 14, 6]}
+        intensity={1.4}
         color="#C9A227"
         castShadow
         shadow-mapSize={[1024, 1024]}
+        shadow-camera-near={0.1}
+        shadow-camera-far={50}
+        shadow-camera-left={-15}
+        shadow-camera-right={15}
+        shadow-camera-top={15}
+        shadow-camera-bottom={-15}
       />
-      <pointLight position={[-5, 8, -5]} intensity={0.6} color="#062052" />
-      <pointLight position={[5, 4, 5]} intensity={0.4} color="#C9A227" />
+      <pointLight position={[-6, 8, -5]} intensity={0.5} color="#062052" />
+      <pointLight position={[5, 3, 6]}  intensity={0.35} color="#C9A227" />
 
-      {/* Fog */}
-      <fog attach="fog" args={['#060D1B', 18, 40]} />
-
+      <CameraRig />
       <Ground />
 
-      {buildings.map((b, i) => (
-        <Float key={i} speed={0.4 + i * 0.1} rotationIntensity={0} floatIntensity={0.15}>
+      {BUILDINGS.map((b, i) => (
+        <Float key={i} speed={0.4 + i * 0.08} rotationIntensity={0} floatIntensity={0.1}>
           <Building {...b} />
         </Float>
       ))}
 
       <Crane isProcessing={isProcessing} />
-      <GoldParticles />
-
-      <OrbitControls
-        autoRotate
-        autoRotateSpeed={0.4}
-        enableZoom={false}
-        enablePan={false}
-        maxPolarAngle={Math.PI / 2.2}
-        minPolarAngle={Math.PI / 5}
-      />
+      <Sparks />
     </>
   )
 }
 
-// ── Exported Canvas wrapper ───────────────────────────────────────────────────
-interface ConstructionSceneProps {
+// ── Exported Canvas ────────────────────────────────────────────────────────────
+export default function ConstructionScene({
+  isProcessing = false,
+  className = '',
+}: {
   isProcessing?: boolean
   className?: string
-}
+}) {
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      mouseWorld.x = (e.clientX / window.innerWidth  - 0.5) * 2
+      mouseWorld.y = -(e.clientY / window.innerHeight - 0.5) * 2
+    }
+    window.addEventListener('mousemove', handler)
+    return () => window.removeEventListener('mousemove', handler)
+  }, [])
 
-export default function ConstructionScene({ isProcessing = false, className = '' }: ConstructionSceneProps) {
   return (
     <Canvas
       className={className}
-      camera={{ position: [8, 7, 12], fov: 42 }}
+      camera={{ position: [0, 6, 13], fov: 44 }}
       dpr={[1, 1.5]}
       gl={{ antialias: true, alpha: true }}
       shadows

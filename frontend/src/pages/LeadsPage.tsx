@@ -3,26 +3,27 @@ import { useQuery } from '@tanstack/react-query'
 import { api, type Lead } from '../lib/api'
 import { Download, Filter, ChevronUp, ChevronDown, Users, Star } from 'lucide-react'
 import { motion } from 'framer-motion'
+import { useSpring, animated } from '@react-spring/web'
 
 // ── Page transition ───────────────────────────────────────────────────────────
 const pageVariants = {
-  initial:  { opacity: 0, y: 12 },
-  animate:  { opacity: 1, y: 0 },
-  exit:     { opacity: 0, y: -8 },
-}
+  initial: { opacity: 0, y: 12 },
+  animate: { opacity: 1, y: 0 },
+  exit:    { opacity: 0, y: -8 },
+} as const
 
-// ── Placeholder leads for demo ───────────────────────────────────────────────
-const PLACEHOLDER_LEADS: Lead[] = [
-  { id: '1',  name: 'Carlos Mendoza',  title: 'CIP Program Director',     county: 'Travis',     state: 'TX', category: 'CIP',  score: 9, status: 'new',         email: 'c.mendoza@traviscounty.gov',    created_at: '2026-03-15' },
-  { id: '2',  name: 'Jennifer Walsh',  title: 'County Judge',             county: 'Harris',     state: 'TX', category: 'MGO',  score: 8, status: 'contacted',    email: 'j.walsh@harriscounty.gov',     created_at: '2026-03-14' },
-  { id: '3',  name: 'Robert Kim',      title: 'Infrastructure Director',  county: 'Bexar',      state: 'TX', category: 'CIP',  score: 9, status: 'meeting_set',  email: 'r.kim@bexarcounty.gov',        created_at: '2026-03-13' },
-  { id: '4',  name: 'Maria Santos',    title: 'CFO',                      county: 'Tarrant',    state: 'TX', category: 'BOTH', score: 7, status: 'new',         email: 'm.santos@tarrantcounty.gov',   created_at: '2026-03-12' },
-  { id: '5',  name: 'James Thornton',  title: 'City Manager',             county: 'Denton',     state: 'TX', category: 'CIP',  score: 8, status: 'new',         email: 'j.thornton@dentoncity.gov',    created_at: '2026-03-11' },
-  { id: '6',  name: 'Angela Price',    title: 'Bond Program Manager',     county: 'Collin',     state: 'TX', category: 'MGO',  score: 6, status: 'contacted',    email: 'a.price@collincounty.gov',     created_at: '2026-03-10' },
-  { id: '7',  name: 'Derek Okafor',    title: 'Public Works Director',    county: 'Fort Bend',  state: 'TX', category: 'CIP',  score: 8, status: 'new',         email: 'd.okafor@fortbendcounty.gov',  created_at: '2026-03-09' },
-  { id: '8',  name: 'Lisa Hernandez',  title: 'County Commissioner',      county: 'Montgomery', state: 'TX', category: 'CIP',  score: 7, status: 'meeting_set', email: 'l.hernandez@mcohd.org',        created_at: '2026-03-08' },
-  { id: '9',  name: 'Thomas Wright',   title: 'Capital Projects Dir.',    county: 'Williamson', state: 'TX', category: 'BOTH', score: 9, status: 'new',         email: 't.wright@wilco.org',           created_at: '2026-03-07' },
-  { id: '10', name: 'Priya Nair',      title: 'Finance Director',         county: 'Hays',       state: 'TX', category: 'MGO',  score: 6, status: 'new',         email: 'p.nair@hayscounty.gov',        created_at: '2026-03-06' },
+// ── Placeholder leads for demo ────────────────────────────────────────────────
+const PLACEHOLDER_LEADS: (Lead & { phone?: string })[] = [
+  { id: '1',  name: 'Carlos Mendoza',  title: 'CIP Program Director',    county: 'Travis',     state: 'TX', category: 'CIP',  score: 9, status: 'new',         email: 'c.mendoza@traviscounty.gov',   phone: '(512) 854-9100', created_at: '2026-03-15' },
+  { id: '2',  name: 'Jennifer Walsh',  title: 'County Judge',            county: 'Harris',     state: 'TX', category: 'MGO',  score: 8, status: 'contacted',   email: 'j.walsh@harriscounty.gov',    phone: '(713) 755-5000', created_at: '2026-03-14' },
+  { id: '3',  name: 'Robert Kim',      title: 'Infrastructure Director', county: 'Bexar',      state: 'TX', category: 'CIP',  score: 9, status: 'meeting_set', email: 'r.kim@bexarcounty.gov',       phone: '(210) 335-2400', created_at: '2026-03-13' },
+  { id: '4',  name: 'Maria Santos',    title: 'CFO',                     county: 'Tarrant',    state: 'TX', category: 'BOTH', score: 7, status: 'new',         email: 'm.santos@tarrantcounty.gov',  phone: '(817) 884-1111', created_at: '2026-03-12' },
+  { id: '5',  name: 'James Thornton',  title: 'City Manager',            county: 'Denton',     state: 'TX', category: 'CIP',  score: 8, status: 'new',         email: 'j.thornton@dentoncity.gov',   phone: '(940) 349-8330', created_at: '2026-03-11' },
+  { id: '6',  name: 'Angela Price',    title: 'Bond Program Manager',    county: 'Collin',     state: 'TX', category: 'MGO',  score: 6, status: 'contacted',   email: 'a.price@collincounty.gov',    phone: '(972) 548-4100', created_at: '2026-03-10' },
+  { id: '7',  name: 'Derek Okafor',    title: 'Public Works Director',   county: 'Fort Bend',  state: 'TX', category: 'CIP',  score: 8, status: 'new',         email: 'd.okafor@fortbendcounty.gov', phone: '(281) 341-8600', created_at: '2026-03-09' },
+  { id: '8',  name: 'Lisa Hernandez',  title: 'County Commissioner',     county: 'Montgomery', state: 'TX', category: 'CIP',  score: 7, status: 'meeting_set', email: 'l.hernandez@mcohd.org',       phone: '(936) 539-7842', created_at: '2026-03-08' },
+  { id: '9',  name: 'Thomas Wright',   title: 'Capital Projects Dir.',   county: 'Williamson', state: 'TX', category: 'BOTH', score: 9, status: 'new',         email: 't.wright@wilco.org',          phone: '(512) 943-1100', created_at: '2026-03-07' },
+  { id: '10', name: 'Priya Nair',      title: 'Finance Director',        county: 'Hays',       state: 'TX', category: 'MGO',  score: 6, status: 'new',         email: 'p.nair@hayscounty.gov',       phone: '(512) 393-2205', created_at: '2026-03-06' },
 ]
 
 type SortKey = 'score' | 'name' | 'county' | 'status'
@@ -54,13 +55,18 @@ function StatusChip({ status }: { status: string }) {
     new:         { label: 'New',         bg: 'rgba(59,130,246,0.1)',  color: '#3B82F6' },
     contacted:   { label: 'Contacted',   bg: 'rgba(201,162,39,0.1)', color: '#C9A227' },
     meeting_set: { label: 'Meeting Set', bg: 'rgba(16,185,129,0.1)', color: '#34D399' },
-    converted:   { label: 'Converted',   bg: 'rgba(139,92,246,0.1)', color: '#A78BFA' },
+    converted:   { label: 'Converted',   bg: 'rgba(6,32,82,0.6)',    color: '#C9A227' },
   }
   const s = map[status] ?? { label: status, bg: 'rgba(255,255,255,0.05)', color: '#475569' }
   return (
     <span
       className="text-xs px-2.5 py-1 rounded-full whitespace-nowrap"
-      style={{ background: s.bg, color: s.color, border: `1px solid ${s.color}22`, fontFamily: 'JetBrains Mono, monospace' }}
+      style={{
+        background: s.bg,
+        color: s.color,
+        border: `1px solid ${s.color}33`,
+        fontFamily: 'JetBrains Mono, monospace',
+      }}
     >
       {s.label}
     </span>
@@ -81,15 +87,83 @@ function CategoryChip({ category }: { category?: string }) {
   )
 }
 
-// ── Pipeline funnel ───────────────────────────────────────────────────────────
+// ── Pipeline funnel — horizontal bars in a row ────────────────────────────────
+const STAGES = [
+  { key: 'new',         label: 'New',         color: '#3B82F6' },
+  { key: 'contacted',   label: 'Contacted',   color: '#C9A227' },
+  { key: 'meeting_set', label: 'Meeting Set', color: '#22C55E' },
+  { key: 'converted',   label: 'Converted',   color: '#062052', borderColor: '#C9A227' },
+] as const
+
+function PipelineBar({ count, maxCount, color, borderColor, delay }: {
+  count: number
+  maxCount: number
+  color: string
+  borderColor?: string
+  delay: number
+}) {
+  const pct = maxCount === 0 ? 0 : (count / maxCount) * 100
+  const spring = useSpring({
+    from: { val: 0 },
+    to: { val: count },
+    config: { tension: 55, friction: 13 },
+    delay: delay * 1000,
+  })
+
+  return (
+    <div className="flex-1 min-w-0">
+      {/* Bar track */}
+      <div
+        className="h-10 rounded-lg overflow-hidden relative"
+        style={{
+          background: '#060D1B',
+          border: `1px solid ${borderColor ?? color}33`,
+        }}
+      >
+        <motion.div
+          className="absolute inset-y-0 left-0 rounded-lg flex items-center justify-end pr-2"
+          initial={{ scaleX: 0 }}
+          animate={{ scaleX: pct / 100 }}
+          transition={{ duration: 1.2, ease: 'easeOut' as const, delay }}
+          style={{ background: color, border: borderColor ? `1px solid ${borderColor}` : undefined, transformOrigin: 'left center' }}
+        >
+          {pct > 18 && (
+            <span
+              className="text-xs font-bold"
+              style={{
+                color: borderColor ? '#C9A227' : '#fff',
+                fontFamily: 'JetBrains Mono, monospace',
+                mixBlendMode: 'screen',
+              }}
+            >
+              <animated.span>{spring.val.to(v => Math.round(v))}</animated.span>
+            </span>
+          )}
+        </motion.div>
+        {pct <= 18 && count > 0 && (
+          <span
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-bold"
+            style={{ color, fontFamily: 'JetBrains Mono, monospace' }}
+          >
+            <animated.span>{spring.val.to(v => Math.round(v))}</animated.span>
+          </span>
+        )}
+        {count === 0 && (
+          <span
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-xs"
+            style={{ color: '#2D3F5C', fontFamily: 'JetBrains Mono, monospace' }}
+          >
+            0
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function PipelineFunnel({ leads }: { leads: Lead[] }) {
-  const stages = [
-    { key: 'new',         label: 'New',         color: '#3B82F6' },
-    { key: 'contacted',   label: 'Contacted',   color: '#C9A227' },
-    { key: 'meeting_set', label: 'Meeting Set', color: '#10B981' },
-    { key: 'converted',   label: 'Converted',   color: '#A78BFA' },
-  ]
-  const total = leads.length || 1
+  const counts = STAGES.map(s => leads.filter(l => l.status === s.key).length)
+  const maxCount = Math.max(...counts, 1)
 
   return (
     <motion.div
@@ -105,49 +179,57 @@ function PipelineFunnel({ leads }: { leads: Lead[] }) {
       >
         Pipeline Funnel
       </h3>
-      <div className="space-y-3">
-        {stages.map((stage, i) => {
-          const count = leads.filter(l => l.status === stage.key).length
-          const pct = (count / total) * 100
-          return (
-            <div key={stage.key} className="space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="text-xs" style={{ color: '#CBD5E1', fontFamily: 'DM Sans, sans-serif' }}>
-                  {stage.label}
-                </span>
-                <span className="text-xs font-semibold font-mono" style={{ color: stage.color }}>
-                  {count}
-                </span>
-              </div>
-              <div className="h-2 rounded-full overflow-hidden" style={{ background: '#162440' }}>
-                <motion.div
-                  className="h-full rounded-full"
-                  style={{ background: stage.color }}
-                  initial={{ width: 0 }}
-                  animate={{ width: `${pct}%` }}
-                  transition={{ duration: 1, ease: 'easeOut', delay: 0.2 + i * 0.1 }}
-                />
-              </div>
-            </div>
-          )
-        })}
+      {/* Labels row */}
+      <div className="flex gap-3 mb-2">
+        {STAGES.map(s => (
+          <div key={s.key} className="flex-1 min-w-0">
+            <span
+              className="text-xs"
+              style={{ color: '#CBD5E1', fontFamily: 'DM Sans, sans-serif' }}
+            >
+              {s.label}
+            </span>
+          </div>
+        ))}
+      </div>
+      {/* Bars row */}
+      <div className="flex gap-3">
+        {STAGES.map((stage, i) => (
+          <PipelineBar
+            key={stage.key}
+            count={counts[i]}
+            maxCount={maxCount}
+            color={stage.color}
+            borderColor={'borderColor' in stage ? stage.borderColor : undefined}
+            delay={i * 0.15}
+          />
+        ))}
       </div>
     </motion.div>
   )
 }
 
-// ── Export ────────────────────────────────────────────────────────────────────
-function exportCSV(leads: Lead[]) {
-  const headers = ['First Name', 'Last Name', 'Title', 'Municipality', 'State', 'Email', 'Status', 'Status Date', 'Phone', 'MGO Confirmed', 'Score', 'Category']
+// ── Export CSV ────────────────────────────────────────────────────────────────
+function exportCSV(leads: (Lead & { phone?: string })[]) {
+  const headers = [
+    'First Name', 'Last Name', 'Title', 'Municipality', 'State',
+    'Email', 'Status', 'Status Date', 'Phone', 'MGO Confirmed', 'Score', 'Category',
+  ]
   const rows = leads.map(l => {
     const [first, last] = splitName(l.name)
     return [
-      first, last, l.title ?? '', l.county, l.state,
-      l.email ?? '', l.status,
+      first,
+      last,
+      l.title ?? '',
+      l.county,
+      l.state,
+      l.email ?? '',
+      l.status,
       new Date(l.created_at).toLocaleDateString(),
-      '', // phone not in Lead type but included per spec
+      l.phone ?? '',
       l.category === 'MGO' || l.category === 'BOTH' ? 'Yes' : 'No',
-      l.score, l.category ?? '',
+      l.score,
+      l.category ?? '',
     ]
   })
   const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(',')).join('\n')
@@ -158,7 +240,7 @@ function exportCSV(leads: Lead[]) {
   a.click()
 }
 
-// ── Sort header ───────────────────────────────────────────────────────────────
+// ── Sortable header ───────────────────────────────────────────────────────────
 function Th({ children, sortKey, currentKey, dir, onSort }: {
   children: React.ReactNode
   sortKey: SortKey
@@ -192,6 +274,26 @@ function PlainTh({ children }: { children: React.ReactNode }) {
   )
 }
 
+// ── Filter button ─────────────────────────────────────────────────────────────
+function FilterBtn({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <motion.button
+      onClick={onClick}
+      whileHover={{ scale: 1.04 }}
+      whileTap={{ scale: 0.97 }}
+      className="text-xs px-3 py-1.5 rounded-lg transition-colors"
+      style={{
+        background: active ? 'rgba(201,162,39,0.12)' : 'rgba(255,255,255,0.03)',
+        color: active ? '#C9A227' : '#475569',
+        border: `1px solid ${active ? 'rgba(201,162,39,0.3)' : '#162440'}`,
+        fontFamily: 'JetBrains Mono, monospace',
+      }}
+    >
+      {label}
+    </motion.button>
+  )
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function LeadsPage() {
   const { data: leadsData } = useQuery({ queryKey: ['leads'], queryFn: api.leads })
@@ -200,7 +302,8 @@ export default function LeadsPage() {
   const [sortKey, setSortKey]               = useState<SortKey>('score')
   const [sortDir, setSortDir]               = useState<SortDir>('desc')
 
-  const rawLeads: Lead[] = leadsData?.leads?.length ? leadsData.leads : PLACEHOLDER_LEADS
+  const rawLeads: (Lead & { phone?: string })[] =
+    leadsData?.leads?.length ? leadsData.leads : PLACEHOLDER_LEADS
 
   const leads = useMemo(() => {
     let filtered = rawLeads
@@ -217,26 +320,9 @@ export default function LeadsPage() {
   }, [rawLeads, categoryFilter, statusFilter, sortKey, sortDir])
 
   const toggleSort = (key: SortKey) => {
-    if (key === sortKey) setSortDir(d => d === 'desc' ? 'asc' : 'desc')
+    if (key === sortKey) setSortDir(d => (d === 'desc' ? 'asc' : 'desc'))
     else { setSortKey(key); setSortDir('desc') }
   }
-
-  const FilterBtn = ({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) => (
-    <motion.button
-      onClick={onClick}
-      whileHover={{ scale: 1.04 }}
-      whileTap={{ scale: 0.97 }}
-      className="text-xs px-3 py-1.5 rounded-lg transition-colors"
-      style={{
-        background: active ? 'rgba(201,162,39,0.12)' : 'rgba(255,255,255,0.03)',
-        color: active ? '#C9A227' : '#475569',
-        border: `1px solid ${active ? 'rgba(201,162,39,0.3)' : '#162440'}`,
-        fontFamily: 'JetBrains Mono, monospace',
-      }}
-    >
-      {label}
-    </motion.button>
-  )
 
   return (
     <motion.div
@@ -245,7 +331,7 @@ export default function LeadsPage() {
       initial="initial"
       animate="animate"
       exit="exit"
-      transition={{ duration: 0.35, ease: 'easeOut' }}
+      transition={{ duration: 0.35, ease: 'easeOut' as const }}
     >
       {/* Header */}
       <motion.div
@@ -259,7 +345,7 @@ export default function LeadsPage() {
             Lead Pipeline
           </h2>
           <p className="text-sm mt-1" style={{ color: '#475569' }}>
-            {leads.length} leads · Texas counties for CIP/MGO outreach
+            {rawLeads.length} leads · Texas counties for CIP/MGO outreach
           </p>
         </div>
         <motion.button
@@ -267,51 +353,55 @@ export default function LeadsPage() {
           whileHover={{ scale: 1.03, boxShadow: '0 0 20px rgba(201,162,39,0.15)' }}
           whileTap={{ scale: 0.97 }}
           className="flex items-center gap-2 text-xs px-4 py-2 rounded-lg"
-          style={{ background: 'rgba(201,162,39,0.1)', color: '#C9A227', border: '1px solid rgba(201,162,39,0.25)' }}
+          style={{
+            background: 'rgba(201,162,39,0.1)',
+            color: '#C9A227',
+            border: '1px solid rgba(201,162,39,0.25)',
+            fontFamily: 'DM Sans, sans-serif',
+          }}
         >
           <Download size={13} /> Export CSV
         </motion.button>
       </motion.div>
 
-      {/* Funnel + filters row */}
-      <div className="grid lg:grid-cols-4 gap-5">
-        <PipelineFunnel leads={rawLeads} />
+      {/* Pipeline funnel — full width */}
+      <PipelineFunnel leads={rawLeads} />
 
-        <motion.div
-          className="lg:col-span-3 rounded-lg border p-4 flex items-start gap-6 flex-wrap"
-          style={{ background: '#0A1628', borderColor: '#162440' }}
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15, duration: 0.4 }}
-        >
-          <div className="flex items-center gap-2 flex-wrap">
-            <Filter size={13} style={{ color: '#475569' }} />
-            <span className="text-xs" style={{ color: '#475569', fontFamily: 'JetBrains Mono, monospace' }}>
-              Category
-            </span>
-            <div className="flex gap-1.5 flex-wrap">
-              {['ALL', 'CIP', 'MGO', 'BOTH'].map(c => (
-                <FilterBtn key={c} label={c} active={categoryFilter === c} onClick={() => setCategoryFilter(c)} />
-              ))}
-            </div>
+      {/* Filter bar */}
+      <motion.div
+        className="rounded-lg border p-4 flex items-start gap-6 flex-wrap"
+        style={{ background: '#0A1628', borderColor: '#162440' }}
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.15, duration: 0.4 }}
+      >
+        <div className="flex items-center gap-2 flex-wrap">
+          <Filter size={13} style={{ color: '#475569' }} />
+          <span className="text-xs" style={{ color: '#475569', fontFamily: 'JetBrains Mono, monospace' }}>
+            Category
+          </span>
+          <div className="flex gap-1.5 flex-wrap">
+            {['ALL', 'CIP', 'MGO', 'BOTH'].map(c => (
+              <FilterBtn key={c} label={c} active={categoryFilter === c} onClick={() => setCategoryFilter(c)} />
+            ))}
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs" style={{ color: '#475569', fontFamily: 'JetBrains Mono, monospace' }}>
-              Status
-            </span>
-            <div className="flex gap-1.5 flex-wrap">
-              {[
-                { v: 'ALL',         l: 'All'         },
-                { v: 'new',         l: 'New'         },
-                { v: 'contacted',   l: 'Contacted'   },
-                { v: 'meeting_set', l: 'Meeting Set' },
-              ].map(({ v, l }) => (
-                <FilterBtn key={v} label={l} active={statusFilter === v} onClick={() => setStatusFilter(v)} />
-              ))}
-            </div>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs" style={{ color: '#475569', fontFamily: 'JetBrains Mono, monospace' }}>
+            Status
+          </span>
+          <div className="flex gap-1.5 flex-wrap">
+            {[
+              { v: 'ALL',         l: 'All'         },
+              { v: 'new',         l: 'New'         },
+              { v: 'contacted',   l: 'Contacted'   },
+              { v: 'meeting_set', l: 'Meeting Set' },
+            ].map(({ v, l }) => (
+              <FilterBtn key={v} label={l} active={statusFilter === v} onClick={() => setStatusFilter(v)} />
+            ))}
           </div>
-        </motion.div>
-      </div>
+        </div>
+      </motion.div>
 
       {/* Table */}
       <motion.div
@@ -342,16 +432,16 @@ export default function LeadsPage() {
             <tbody>
               {leads.map((lead, i) => {
                 const [first, last] = splitName(lead.name)
-                const mgoConfirmed = lead.category === 'MGO' || lead.category === 'BOTH'
+                const mgoConfirmed  = lead.category === 'MGO' || lead.category === 'BOTH'
                 return (
                   <motion.tr
                     key={lead.id}
                     className="border-b"
                     style={{ borderColor: '#0F1F36' }}
-                    initial={{ opacity: 0, x: -10 }}
+                    initial={{ opacity: 0, x: -12 }}
                     animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: i * 0.03, duration: 0.3 }}
-                    whileHover={{ backgroundColor: 'rgba(255,255,255,0.02)' }}
+                    transition={{ delay: i * 0.025, duration: 0.3 }}
+                    whileHover={{ backgroundColor: 'rgba(201,162,39,0.03)' }}
                   >
                     <td className="px-3 py-3">
                       <p className="text-sm font-medium text-white whitespace-nowrap">{first}</p>
@@ -383,7 +473,9 @@ export default function LeadsPage() {
                       </span>
                     </td>
                     <td className="px-3 py-3">
-                      <span className="text-xs" style={{ color: '#2D3F5C' }}>—</span>
+                      <span className="text-xs font-mono whitespace-nowrap" style={{ color: '#CBD5E1' }}>
+                        {lead.phone ?? <span style={{ color: '#2D3F5C' }}>—</span>}
+                      </span>
                     </td>
                     <td className="px-3 py-3">
                       <span

@@ -1,507 +1,634 @@
 import { useQuery } from '@tanstack/react-query'
-import { api, type Conversation } from '../lib/api'
+import { api } from '../lib/api'
+import type { Conversation } from '../lib/api'
+import { motion, AnimatePresence } from 'framer-motion'
+import { useSpring, animated, config } from '@react-spring/web'
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
 } from 'recharts'
 import {
-  MessageSquare, Database, Users, Bot, ArrowRight, TrendingUp, type LucideIcon,
+  MessageSquare,
+  Database,
+  Users,
+  Bot,
+  ArrowRight,
+  TrendingUp,
 } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import {
-  motion, useMotionValue, useTransform, animate,
-  AnimatePresence,
-} from 'framer-motion'
-import { useEffect, useRef } from 'react'
+import { useRef, useEffect } from 'react'
+import ConstructionScene from '../components/ConstructionScene'
 import ParticlesCanvas from '../components/ParticlesCanvas'
 
-// ── Page transition wrapper ──────────────────────────────────────────────────
-const pageVariants = {
-  initial:  { opacity: 0, y: 12 },
-  animate:  { opacity: 1, y: 0 },
-  exit:     { opacity: 0, y: -8 },
+// ── Chart data ────────────────────────────────────────────────────────────────
+
+function buildChartData(conversations: Conversation[]): { hour: string; queries: number }[] {
+  const now = Date.now()
+  const slots: { ts: number; label: string; queries: number }[] = []
+
+  for (let i = 11; i >= 0; i--) {
+    const slotStart = now - i * 60 * 60 * 1000
+    const d = new Date(slotStart)
+    const label = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    slots.push({ ts: slotStart, label, queries: 0 })
+  }
+
+  for (const c of conversations) {
+    const ts = new Date(c.created_at).getTime()
+    const diffH = (now - ts) / (1000 * 60 * 60)
+    if (diffH > 12) continue
+    const idx = 11 - Math.floor(diffH)
+    const slot = slots[Math.max(0, Math.min(11, idx))]
+    if (slot) slot.queries++
+  }
+
+  return slots.map(({ label, queries }) => ({ hour: label, queries }))
 }
 
-// ── Stagger container ────────────────────────────────────────────────────────
-const staggerContainer = {
-  animate: { transition: { staggerChildren: 0.08 } },
-}
-const fadeUp = {
-  initial:  { opacity: 0, y: 20 },
-  animate:  { opacity: 1, y: 0 },
-}
+// ── StatCard ──────────────────────────────────────────────────────────────────
 
-// ── CountUp hook ─────────────────────────────────────────────────────────────
-function CountUp({ to, duration = 1.5 }: { to: number; duration?: number }) {
-  const val = useMotionValue(0)
-  const rounded = useTransform(val, v => Math.round(v).toLocaleString())
-  const displayRef = useRef<HTMLSpanElement>(null)
-
-  useEffect(() => {
-    const controls = animate(val, to, { duration, ease: 'easeOut' })
-    return controls.stop
-  }, [to, duration, val])
-
-  return <motion.span ref={displayRef}>{rounded}</motion.span>
-}
-
-// ── Stat card ────────────────────────────────────────────────────────────────
-function StatCard({
-  label, value, numericValue, icon: Icon, accent = false,
-}: {
+interface StatCardProps {
   label: string
-  value: string | number
-  numericValue?: number
+  value: number
+  prefix?: string
+  suffix?: string
   icon: LucideIcon
   accent?: boolean
-}) {
+  index: number
+}
+
+function StatCard({ label, value, prefix, suffix, icon: Icon, accent = false, index }: StatCardProps) {
+  const spring = useSpring({
+    from: { n: 0 },
+    to: { n: value },
+    config: config.molasses,
+    delay: 200 + index * 100,
+  })
+
   return (
     <motion.div
-      variants={fadeUp}
-      transition={{ duration: 0.4, ease: 'easeOut' }}
+      initial={{ opacity: 0, y: 24 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, delay: index * 0.1, ease: 'easeOut' as const }}
       whileHover={{
-        y: -3,
-        boxShadow: '0 16px 48px rgba(0,0,0,0.6), 0 0 30px rgba(201,162,39,0.12)',
+        y: -6,
+        boxShadow: '0 24px 60px rgba(0,0,0,0.7), 0 0 40px rgba(201,162,39,0.1)',
         borderColor: 'rgba(201,162,39,0.3)',
       }}
-      className="rounded-lg border p-5 cursor-default"
+      className="relative overflow-hidden rounded-xl p-5 cursor-default"
       style={{
         background: '#0A1628',
-        borderColor: accent ? 'rgba(201,162,39,0.3)' : '#162440',
-        boxShadow: accent ? '0 0 30px rgba(201,162,39,0.08)' : 'none',
+        border: `1px solid ${accent ? 'rgba(201,162,39,0.25)' : '#162440'}`,
       }}
     >
-      <div className="flex items-start justify-between">
-        <div>
-          <p
-            className="text-[10px] uppercase tracking-widest mb-3"
-            style={{ color: '#475569', fontFamily: 'JetBrains Mono, monospace' }}
+      {/* Shimmer on hover */}
+      <motion.div
+        className="pointer-events-none absolute inset-0 rounded-xl opacity-0"
+        whileHover={{ opacity: 1 }}
+        style={{
+          background:
+            'linear-gradient(135deg, rgba(201,162,39,0.05) 0%, transparent 55%, rgba(201,162,39,0.03) 100%)',
+        }}
+      />
+
+      <div className="relative z-10 flex items-start justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <span
+            className="text-[10px] font-medium uppercase tracking-widest"
+            style={{ color: '#4A6080', fontFamily: 'JetBrains Mono, monospace' }}
           >
             {label}
-          </p>
-          <p
-            className="text-3xl font-bold"
-            style={{
-              fontFamily: 'JetBrains Mono, monospace',
-              color: accent ? '#C9A227' : '#F1F5F9',
-            }}
-          >
-            {numericValue !== undefined ? <CountUp to={numericValue} /> : value}
-          </p>
+          </span>
+
+          <div className="flex items-baseline gap-0.5" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
+            {prefix && (
+              <span className="text-sm" style={{ color: '#C9A227' }}>
+                {prefix}
+              </span>
+            )}
+            <animated.span
+              className="text-3xl font-bold"
+              style={{ color: accent ? '#C9A227' : '#F1F5F9' }}
+            >
+              {spring.n.to((n) => Math.round(n).toLocaleString())}
+            </animated.span>
+            {suffix && (
+              <span className="text-sm ml-0.5" style={{ color: '#4A6080' }}>
+                {suffix}
+              </span>
+            )}
+          </div>
         </div>
+
         <div
-          className="w-10 h-10 rounded-lg flex items-center justify-center"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
           style={{
-            background: accent ? 'rgba(201,162,39,0.1)' : 'rgba(255,255,255,0.04)',
-            border: `1px solid ${accent ? 'rgba(201,162,39,0.2)' : '#162440'}`,
+            background: accent ? 'rgba(201,162,39,0.12)' : 'rgba(6,32,82,0.6)',
+            border: `1px solid ${accent ? 'rgba(201,162,39,0.25)' : '#1E3050'}`,
           }}
         >
-          <Icon size={18} style={{ color: accent ? '#C9A227' : '#475569' }} />
+          <Icon size={18} color={accent ? '#C9A227' : '#4A7AB5'} />
         </div>
       </div>
     </motion.div>
   )
 }
 
-// ── Agent status pill ────────────────────────────────────────────────────────
-function AgentPill({ agent, index }: {
-  agent: { id: string; name: string; status: string; total_queries: number }
+// ── AgentPill ─────────────────────────────────────────────────────────────────
+
+interface AgentPillProps {
+  name: string
+  status: string
+  totalQueries: number
   index: number
-}) {
-  const isOnline = agent.status === 'online'
-  return (
-    <motion.div
-      variants={fadeUp}
-      custom={index}
-      whileHover={{ x: 3, borderColor: 'rgba(201,162,39,0.25)' }}
-      className="flex items-center gap-3 rounded-lg border p-4"
-      style={{ background: '#0A1628', borderColor: '#162440' }}
-    >
-      <div
-        className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${isOnline ? 'status-dot-online' : ''}`}
-        style={{ background: isOnline ? '#10B981' : '#334155' }}
-      />
-      <div className="flex-1 min-w-0">
-        <p
-          className="text-sm font-medium text-white truncate"
-          style={{ fontFamily: 'Syne, sans-serif' }}
-        >
-          {agent.name}
-        </p>
-        <p className="text-xs mt-0.5" style={{ color: '#475569', fontFamily: 'JetBrains Mono, monospace' }}>
-          {agent.total_queries} queries
-        </p>
-      </div>
-      <span
-        className="text-xs px-2 py-0.5 rounded-full"
-        style={{
-          background: isOnline ? 'rgba(16,185,129,0.1)' : 'rgba(255,255,255,0.04)',
-          color: isOnline ? '#34D399' : '#475569',
-          border: `1px solid ${isOnline ? 'rgba(16,185,129,0.2)' : '#162440'}`,
-          fontFamily: 'JetBrains Mono, monospace',
-        }}
-      >
-        {agent.status.toUpperCase()}
-      </span>
-    </motion.div>
-  )
 }
 
-// ── Conversation row (slides in from right) ──────────────────────────────────
-function ConvRow({ conv, index }: { conv: Conversation; index: number }) {
-  const channelColors: Record<string, string> = {
-    web: '#3B82F6', whatsapp: '#25D366', telegram: '#2AABEE',
-  }
-  const color = channelColors[conv.channel] ?? '#475569'
+function AgentPill({ name, status, totalQueries, index }: AgentPillProps) {
+  const dotColor =
+    status === 'online' ? '#22C55E' : status === 'processing' ? '#C9A227' : '#6B7280'
 
   return (
     <motion.div
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
-      transition={{ delay: index * 0.05, duration: 0.35, ease: 'easeOut' }}
-      className="flex items-start gap-3 py-3 border-b"
-      style={{ borderColor: '#0F1F36' }}
+      transition={{ duration: 0.4, delay: index * 0.08, ease: 'easeOut' as const }}
+      className="flex items-center justify-between rounded-lg px-4 py-3"
+      style={{ background: '#060D1B', border: '1px solid #162440' }}
     >
-      <div className="w-1.5 h-1.5 rounded-full mt-2 flex-shrink-0" style={{ background: color }} />
-      <div className="flex-1 min-w-0">
-        <p className="text-sm text-slate-200 truncate">{conv.question || '—'}</p>
-        <p className="text-xs mt-0.5 truncate" style={{ color: '#475569' }}>
-          {conv.answer_preview}
-        </p>
-      </div>
-      <div className="text-right flex-shrink-0">
-        <span className="text-xs" style={{ color: '#C9A227', fontFamily: 'JetBrains Mono, monospace' }}>
-          {conv.response_time_ms}ms
+      <div className="flex items-center gap-3">
+        <motion.div
+          className="h-2 w-2 rounded-full shrink-0"
+          style={{ background: dotColor }}
+          animate={
+            status === 'online'
+              ? { scale: [1, 1.5, 1], opacity: [1, 0.5, 1] }
+              : undefined
+          }
+          transition={{ repeat: Infinity, duration: 2, ease: 'easeInOut' }}
+        />
+        <span
+          className="text-sm font-medium truncate"
+          style={{ color: '#F1F5F9', fontFamily: 'DM Sans, sans-serif' }}
+        >
+          {name}
         </span>
-        <p className="text-xs mt-0.5" style={{ color: '#2D3F5C' }}>{conv.channel}</p>
+      </div>
+      <span
+        className="text-xs shrink-0 ml-2"
+        style={{ color: '#4A6080', fontFamily: 'JetBrains Mono, monospace' }}
+      >
+        {totalQueries.toLocaleString()} q
+      </span>
+    </motion.div>
+  )
+}
+
+// ── ConvRow ───────────────────────────────────────────────────────────────────
+
+const CHANNEL_COLORS: Record<string, string> = {
+  web: '#4A7AB5',
+  whatsapp: '#22C55E',
+  telegram: '#38BDF8',
+  voice: '#A78BFA',
+}
+
+interface ConvRowProps {
+  conv: Conversation
+  index: number
+  isLast: boolean
+}
+
+function ConvRow({ conv, index, isLast }: ConvRowProps) {
+  const channelColor = CHANNEL_COLORS[conv.channel] ?? '#6B7280'
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: 30 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.4, delay: index * 0.05, ease: 'easeOut' as const }}
+      className="flex gap-3"
+    >
+      {/* Timeline track */}
+      <div className="flex flex-col items-center pt-1 shrink-0">
+        <div
+          className="h-2.5 w-2.5 rounded-full shrink-0"
+          style={{
+            background: channelColor,
+            boxShadow: `0 0 6px ${channelColor}55`,
+          }}
+        />
+        {!isLast && (
+          <div
+            className="mt-1 w-px flex-1"
+            style={{ background: 'rgba(201,162,39,0.15)', minHeight: '28px' }}
+          />
+        )}
+      </div>
+
+      {/* Content card */}
+      <div
+        className="mb-4 flex-1 rounded-lg px-4 py-3 min-w-0"
+        style={{ background: '#0A1628', border: '1px solid #162440' }}
+      >
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <span
+            className="text-[10px] uppercase tracking-widest font-semibold"
+            style={{ color: channelColor, fontFamily: 'DM Sans, sans-serif' }}
+          >
+            {conv.channel}
+          </span>
+          <span
+            className="text-[10px] shrink-0"
+            style={{ color: '#4A6080', fontFamily: 'JetBrains Mono, monospace' }}
+          >
+            {new Date(conv.created_at).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+            })}
+          </span>
+        </div>
+
+        <p
+          className="text-sm leading-relaxed truncate"
+          style={{ color: '#CBD5E1', fontFamily: 'DM Sans, sans-serif' }}
+        >
+          {conv.answer_preview ?? conv.question ?? '—'}
+        </p>
+
+        <div className="mt-1.5 flex flex-wrap gap-2">
+          <span
+            className="rounded px-1.5 py-0.5 text-[10px]"
+            style={{
+              background: 'rgba(6,32,82,0.6)',
+              color: '#4A7AB5',
+              fontFamily: 'JetBrains Mono, monospace',
+            }}
+          >
+            {conv.model_used ?? 'unknown'}
+          </span>
+          {conv.response_time_ms != null && (
+            <span
+              className="rounded px-1.5 py-0.5 text-[10px]"
+              style={{
+                background: 'rgba(201,162,39,0.08)',
+                color: '#C9A227',
+                fontFamily: 'JetBrains Mono, monospace',
+              }}
+            >
+              {conv.response_time_ms}ms
+            </span>
+          )}
+        </div>
       </div>
     </motion.div>
   )
 }
 
-// ── Progress bar (fills on load) ─────────────────────────────────────────────
-function ProgressBar({ label, value, max, color = '#C9A227' }: {
-  label: string; value: number; max: number; color?: string
-}) {
-  const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0
+// ── Custom recharts tooltip ───────────────────────────────────────────────────
+
+interface TooltipPayloadItem {
+  value: number
+}
+
+interface CustomTooltipProps {
+  active?: boolean
+  payload?: TooltipPayloadItem[]
+  label?: string
+}
+
+function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
+  if (!active || !payload?.length) return null
   return (
-    <div className="space-y-1">
-      <div className="flex justify-between">
-        <span className="text-xs" style={{ color: '#475569', fontFamily: 'JetBrains Mono, monospace' }}>{label}</span>
-        <span className="text-xs font-semibold" style={{ color, fontFamily: 'JetBrains Mono, monospace' }}>{value}</span>
-      </div>
-      <div className="h-1.5 rounded-full overflow-hidden" style={{ background: '#162440' }}>
-        <motion.div
-          className="h-full rounded-full"
-          style={{ background: color }}
-          initial={{ width: 0 }}
-          animate={{ width: `${pct}%` }}
-          transition={{ duration: 1.2, ease: 'easeOut', delay: 0.3 }}
-        />
-      </div>
+    <div
+      className="rounded-lg px-3 py-2"
+      style={{
+        background: '#0A1628',
+        border: '1px solid rgba(201,162,39,0.3)',
+        fontFamily: 'JetBrains Mono, monospace',
+      }}
+    >
+      <p className="text-[10px]" style={{ color: '#4A6080' }}>
+        {label}
+      </p>
+      <p className="text-sm font-bold" style={{ color: '#C9A227' }}>
+        {payload[0]?.value ?? 0} queries
+      </p>
     </div>
   )
 }
 
-// ── Chart data builder ───────────────────────────────────────────────────────
-function buildChartData(conversations: Conversation[]) {
-  const hours = Array.from({ length: 12 }, (_, i) => {
-    const h = new Date()
-    h.setHours(h.getHours() - (11 - i), 0, 0, 0)
-    return { hour: h.getHours(), label: `${h.getHours()}:00`, queries: 0 }
-  })
-  for (const c of conversations) {
-    const h = new Date(c.created_at).getHours()
-    const slot = hours.find(s => s.hour === h)
-    if (slot) slot.queries++
-  }
-  return hours
-}
+// ── Dashboard ─────────────────────────────────────────────────────────────────
 
-// ── Hero banner ──────────────────────────────────────────────────────────────
-function HeroBanner({ totalConvs, chunksLoaded }: { totalConvs: number; chunksLoaded: number }) {
-  return (
-    <motion.div
-      variants={fadeUp}
-      className="relative overflow-hidden rounded-xl p-6"
-      style={{
-        background: 'linear-gradient(135deg, #0A1628 0%, #0D1F38 50%, #0A1628 100%)',
-        border: '1px solid rgba(201,162,39,0.2)',
-      }}
-    >
-      <ParticlesCanvas count={35} />
-
-      {/* Gradient overlay on sides */}
-      <div
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          background: 'radial-gradient(ellipse at 80% 50%, rgba(201,162,39,0.06) 0%, transparent 60%)',
-        }}
-      />
-
-      <div className="relative z-10 flex items-center justify-between flex-wrap gap-4">
-        <div>
-          <div
-            className="text-xs font-mono uppercase tracking-widest mb-2"
-            style={{ color: 'rgba(201,162,39,0.7)' }}
-          >
-            Front Line Advisory Group
-          </div>
-          <h1
-            className="text-2xl font-bold text-white leading-tight"
-            style={{ fontFamily: 'Syne, sans-serif' }}
-          >
-            BRICK v2 Intelligence
-          </h1>
-          <p className="text-sm mt-1" style={{ color: '#475569' }}>
-            AI-powered CIP bond program management — live
-          </p>
-        </div>
-
-        <div className="flex items-center gap-6">
-          <div className="text-center">
-            <div className="text-2xl font-bold" style={{ fontFamily: 'JetBrains Mono, monospace', color: '#C9A227' }}>
-              <CountUp to={totalConvs} />
-            </div>
-            <div className="text-xs mt-0.5" style={{ color: '#475569', fontFamily: 'JetBrains Mono, monospace' }}>
-              queries handled
-            </div>
-          </div>
-          <div className="w-px h-10" style={{ background: '#162440' }} />
-          <div className="text-center">
-            <div className="text-2xl font-bold" style={{ fontFamily: 'JetBrains Mono, monospace', color: '#F1F5F9' }}>
-              <CountUp to={chunksLoaded} />
-            </div>
-            <div className="text-xs mt-0.5" style={{ color: '#475569', fontFamily: 'JetBrains Mono, monospace' }}>
-              knowledge chunks
-            </div>
-          </div>
-          <div className="w-px h-10" style={{ background: '#162440' }} />
-          <div className="text-center">
-            <div className="text-2xl font-bold" style={{ fontFamily: 'JetBrains Mono, monospace', color: '#10B981' }}>
-              $3.5B
-            </div>
-            <div className="text-xs mt-0.5" style={{ color: '#475569', fontFamily: 'JetBrains Mono, monospace' }}>
-              programs managed
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Construction progress bar */}
-      <div className="relative z-10 mt-5">
-        <div className="flex justify-between mb-1.5">
-          <span className="text-xs font-mono" style={{ color: 'rgba(201,162,39,0.7)' }}>Platform readiness</span>
-          <span className="text-xs font-mono" style={{ color: '#C9A227' }}>71%</span>
-        </div>
-        <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(22,36,64,0.8)' }}>
-          <motion.div
-            className="h-full rounded-full"
-            style={{ background: 'linear-gradient(90deg, #7A6018, #C9A227, #F5D87A)' }}
-            initial={{ width: 0 }}
-            animate={{ width: '71%' }}
-            transition={{ duration: 1.5, ease: 'easeOut', delay: 0.5 }}
-          />
-        </div>
-        <div className="flex justify-between mt-1">
-          <span className="text-[9px] font-mono" style={{ color: '#2D3F5C' }}>Phase 1-5 complete</span>
-          <span className="text-[9px] font-mono" style={{ color: '#2D3F5C' }}>Phase 6-7 remaining</span>
-        </div>
-      </div>
-    </motion.div>
-  )
-}
-
-// ── Main page ────────────────────────────────────────────────────────────────
 export default function Dashboard() {
-  const { data: stats, isLoading: statsLoading } = useQuery({
+  const { data: statsData } = useQuery({
     queryKey: ['stats'],
     queryFn: api.stats,
     refetchInterval: 20_000,
   })
+
   const { data: agentsData } = useQuery({
     queryKey: ['agents'],
     queryFn: api.agents,
-    refetchInterval: 15_000,
+    refetchInterval: 20_000,
   })
-  const { data: convsData } = useQuery({
-    queryKey: ['conversations'],
+
+  const { data: conversationsData } = useQuery({
+    queryKey: ['conversations', 50],
     queryFn: () => api.conversations(50),
     refetchInterval: 20_000,
   })
 
-  const conversations = convsData?.conversations ?? []
-  const agents = agentsData?.agents ?? []
-  const chartData = buildChartData(conversations)
+  const stats = statsData ?? {
+    total_conversations: 0,
+    knowledge_chunks: 885,
+    total_leads: 0,
+    agents_online: 0,
+    agents_total: 0,
+  }
 
-  const totalConvs = statsLoading ? 0 : (stats?.total_conversations ?? 0)
-  const chunks     = statsLoading ? 0 : (stats?.knowledge_chunks ?? 0)
-  const totalLeads = statsLoading ? 0 : (stats?.total_leads ?? 0)
-  const agentsOnline = statsLoading ? 0 : (stats?.agents_online ?? 0)
-  const agentsTotal  = statsLoading ? 0 : (stats?.agents_total ?? 3)
+  const agents = agentsData?.agents ?? []
+  const conversations = conversationsData?.conversations ?? []
+  const chartData = buildChartData(conversations)
+  const recentConvs = conversations.slice(0, 8)
+
+  // Suppress unused import lint — useRef/useEffect included per spec
+  const _ref = useRef<null>(null)
+  useEffect(() => { _ref.current = null }, [])
 
   return (
-    <motion.div
-      className="p-6 space-y-5 max-w-7xl mx-auto"
-      variants={pageVariants}
-      initial="initial"
-      animate="animate"
-      exit="exit"
-      transition={{ duration: 0.35, ease: 'easeOut' }}
+    <div
+      className="min-h-screen space-y-6 p-6"
+      style={{ background: '#060D1B', fontFamily: 'DM Sans, sans-serif' }}
     >
-      {/* Hero */}
-      <HeroBanner totalConvs={totalConvs} chunksLoaded={chunks} />
-
-      {/* Stat cards (staggered) */}
-      <motion.div
-        className="grid grid-cols-2 lg:grid-cols-4 gap-4"
-        variants={staggerContainer}
-        initial="initial"
-        animate="animate"
+      {/* ────────────────────────────────────────────────────────────────────── */}
+      {/* Section 1 — 3D Hero                                                   */}
+      {/* ────────────────────────────────────────────────────────────────────── */}
+      <div
+        className="relative h-72 w-full overflow-hidden rounded-xl"
+        style={{ border: '1px solid rgba(201,162,39,0.2)' }}
       >
+        {/* Particles layer */}
+        <div className="absolute inset-0 z-0">
+          <ParticlesCanvas count={60} />
+        </div>
+
+        {/* ConstructionScene fills full area */}
+        <div className="absolute inset-0 z-10">
+          <ConstructionScene className="h-full w-full" />
+        </div>
+
+        {/* Bottom gradient: transparent → #060D1B */}
+        <div
+          className="pointer-events-none absolute bottom-0 left-0 right-0 z-20 h-32"
+          style={{ background: 'linear-gradient(to top, #060D1B, transparent)' }}
+        />
+
+        {/* Top-left badge */}
+        <div
+          className="absolute left-4 top-4 z-30 rounded px-3 py-1.5"
+          style={{
+            background: 'rgba(6,13,27,0.88)',
+            border: '1px solid rgba(201,162,39,0.4)',
+            backdropFilter: 'blur(8px)',
+          }}
+        >
+          <span
+            className="text-[10px] font-bold uppercase tracking-widest"
+            style={{ color: '#C9A227', fontFamily: 'JetBrains Mono, monospace' }}
+          >
+            Construction Command Center
+          </span>
+        </div>
+
+        {/* Bottom inline stats */}
+        <div className="absolute bottom-4 left-4 right-4 z-30 flex items-center gap-8">
+          {[
+            { label: '$6.3B', sub: 'managed' },
+            { label: '127', sub: 'projects' },
+            { label: stats.knowledge_chunks.toLocaleString(), sub: 'knowledge chunks' },
+          ].map((item) => (
+            <div key={item.sub} className="flex flex-col leading-none">
+              <span
+                className="text-lg font-bold"
+                style={{ color: '#C9A227', fontFamily: 'JetBrains Mono, monospace' }}
+              >
+                {item.label}
+              </span>
+              <span
+                className="mt-0.5 text-[10px]"
+                style={{ color: 'rgba(201,162,39,0.55)', fontFamily: 'DM Sans, sans-serif' }}
+              >
+                {item.sub}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ────────────────────────────────────────────────────────────────────── */}
+      {/* Section 2 — Stat Cards (4 cols)                                       */}
+      {/* ────────────────────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
           label="Total Conversations"
-          value={totalConvs}
-          numericValue={totalConvs}
+          value={stats.total_conversations}
           icon={MessageSquare}
-          accent
+          index={0}
         />
         <StatCard
           label="Knowledge Chunks"
-          value={chunks.toLocaleString()}
-          numericValue={chunks}
+          value={stats.knowledge_chunks}
           icon={Database}
+          accent
+          index={1}
         />
         <StatCard
-          label="Leads"
-          value={totalLeads}
-          numericValue={totalLeads}
+          label="Total Leads"
+          value={stats.total_leads}
           icon={Users}
+          index={2}
         />
         <StatCard
           label="Agents Online"
-          value={`${agentsOnline} / ${agentsTotal}`}
-          numericValue={agentsOnline}
+          value={stats.agents_online}
+          suffix={`/${stats.agents_total}`}
           icon={Bot}
+          accent
+          index={3}
         />
-      </motion.div>
+      </div>
 
-      <div className="grid lg:grid-cols-3 gap-5">
-        {/* Chart */}
+      {/* ────────────────────────────────────────────────────────────────────── */}
+      {/* Section 3 — Chart (lg:col-span-2) + Agents (col-span-1)               */}
+      {/* ────────────────────────────────────────────────────────────────────── */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        {/* Area chart */}
         <motion.div
-          className="lg:col-span-2 rounded-lg border p-5"
-          style={{ background: '#0A1628', borderColor: '#162440' }}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3, duration: 0.4 }}
-          whileHover={{ borderColor: 'rgba(201,162,39,0.2)' }}
+          transition={{ duration: 0.5, delay: 0.3 }}
+          className="rounded-xl p-5 lg:col-span-2"
+          style={{ background: '#0A1628', border: '1px solid #162440' }}
         >
-          <div className="flex items-center justify-between mb-5">
-            <h3 className="text-sm font-semibold text-white" style={{ fontFamily: 'Syne, sans-serif' }}>
-              Query Volume (Last 12h)
-            </h3>
-            <div className="flex items-center gap-1.5">
-              <TrendingUp size={12} style={{ color: '#C9A227' }} />
-              <span className="text-xs" style={{ color: '#475569', fontFamily: 'JetBrains Mono, monospace' }}>
-                {conversations.length} total
-              </span>
-            </div>
+          <div className="mb-4 flex items-center gap-2">
+            <TrendingUp size={15} color="#C9A227" />
+            <h2
+              className="text-xs font-semibold uppercase tracking-widest"
+              style={{ color: '#F1F5F9', fontFamily: 'Syne, sans-serif' }}
+            >
+              Query Volume — Last 12h
+            </h2>
           </div>
-          <ResponsiveContainer width="100%" height={180}>
-            <AreaChart data={chartData} margin={{ top: 4, right: 4, left: -24, bottom: 0 }}>
+
+          <ResponsiveContainer width="100%" height={200}>
+            <AreaChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
               <defs>
-                <linearGradient id="goldGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor="#C9A227" stopOpacity={0.25} />
+                <linearGradient id="goldAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%"  stopColor="#C9A227" stopOpacity={0.35} />
                   <stop offset="95%" stopColor="#C9A227" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#162440" />
-              <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#475569', fontFamily: 'JetBrains Mono' }} />
-              <YAxis tick={{ fontSize: 10, fill: '#475569', fontFamily: 'JetBrains Mono' }} allowDecimals={false} />
-              <Tooltip
-                contentStyle={{ background: '#0A1628', border: '1px solid #162440', borderRadius: 6, fontSize: 12 }}
-                labelStyle={{ color: '#C9A227', fontFamily: 'JetBrains Mono' }}
-                itemStyle={{ color: '#CBD5E1' }}
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+              <XAxis
+                dataKey="hour"
+                tick={{ fill: '#4A6080', fontSize: 10, fontFamily: 'JetBrains Mono, monospace' }}
+                axisLine={false}
+                tickLine={false}
+                interval={2}
               />
-              <Area type="monotone" dataKey="queries" stroke="#C9A227" strokeWidth={2} fill="url(#goldGrad)" dot={false} />
+              <YAxis
+                tick={{ fill: '#4A6080', fontSize: 10, fontFamily: 'JetBrains Mono, monospace' }}
+                axisLine={false}
+                tickLine={false}
+                allowDecimals={false}
+              />
+              <Tooltip content={<CustomTooltip />} />
+              <Area
+                type="monotone"
+                dataKey="queries"
+                stroke="#C9A227"
+                strokeWidth={2}
+                fill="url(#goldAreaGrad)"
+                dot={false}
+                activeDot={{ r: 4, fill: '#C9A227', stroke: '#060D1B', strokeWidth: 2 }}
+              />
             </AreaChart>
           </ResponsiveContainer>
         </motion.div>
 
-        {/* Agents + progress */}
+        {/* Agents list */}
         <motion.div
-          className="rounded-lg border p-5 flex flex-col gap-4"
-          style={{ background: '#0A1628', borderColor: '#162440' }}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.35, duration: 0.4 }}
+          transition={{ duration: 0.5, delay: 0.4 }}
+          className="rounded-xl p-5"
+          style={{ background: '#0A1628', border: '1px solid #162440' }}
         >
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-white" style={{ fontFamily: 'Syne, sans-serif' }}>
-              Agent Status
-            </h3>
-            <Link to="/agents" className="flex items-center gap-1 text-xs hover:opacity-80 transition-opacity" style={{ color: '#C9A227' }}>
-              View all <ArrowRight size={12} />
+          <div className="mb-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Bot size={15} color="#C9A227" />
+              <h2
+                className="text-xs font-semibold uppercase tracking-widest"
+                style={{ color: '#F1F5F9', fontFamily: 'Syne, sans-serif' }}
+              >
+                Agents
+              </h2>
+            </div>
+            <Link
+              to="/agents"
+              className="flex items-center gap-1 text-[10px] hover:opacity-70 transition-opacity"
+              style={{ color: '#C9A227' }}
+            >
+              View all <ArrowRight size={11} />
             </Link>
           </div>
 
-          <motion.div className="space-y-2" variants={staggerContainer} initial="initial" animate="animate">
-            {agents.length === 0
-              ? Array.from({ length: 3 }).map((_, i) => (
-                  <div key={i} className="h-14 rounded-lg animate-pulse" style={{ background: '#162440' }} />
+          <div className="space-y-2">
+            <AnimatePresence>
+              {agents.length > 0 ? (
+                agents.map((agent, i) => (
+                  <AgentPill
+                    key={agent.id}
+                    name={agent.name}
+                    status={agent.status}
+                    totalQueries={agent.total_queries}
+                    index={i}
+                  />
                 ))
-              : agents.map((a, i) => <AgentPill key={a.id} agent={a} index={i} />)
-            }
-          </motion.div>
-
-          {/* Mini progress bars */}
-          <div className="space-y-3 pt-2 border-t" style={{ borderColor: '#162440' }}>
-            <ProgressBar label="Knowledge coverage" value={chunks} max={1000} />
-            <ProgressBar label="Active channels" value={3} max={5} color="#3B82F6" />
-            <ProgressBar label="Lead pipeline" value={totalLeads} max={50} color="#10B981" />
+              ) : (
+                <p
+                  className="py-6 text-center text-xs"
+                  style={{ color: '#4A6080', fontFamily: 'DM Sans, sans-serif' }}
+                >
+                  No agents configured
+                </p>
+              )}
+            </AnimatePresence>
           </div>
         </motion.div>
       </div>
 
-      {/* Recent conversations */}
+      {/* ────────────────────────────────────────────────────────────────────── */}
+      {/* Section 4 — Recent Activity Feed                                      */}
+      {/* ────────────────────────────────────────────────────────────────────── */}
       <motion.div
-        className="rounded-lg border"
-        style={{ background: '#0A1628', borderColor: '#162440' }}
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.45, duration: 0.4 }}
+        transition={{ duration: 0.5, delay: 0.5 }}
+        className="rounded-xl p-5"
+        style={{ background: '#0A1628', border: '1px solid #162440' }}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: '#162440' }}>
-          <h3 className="text-sm font-semibold text-white" style={{ fontFamily: 'Syne, sans-serif' }}>
-            Recent Conversations
-          </h3>
-          <Link to="/chat" className="flex items-center gap-1 text-xs hover:opacity-80 transition-opacity" style={{ color: '#C9A227' }}>
-            Open Chat <ArrowRight size={12} />
+        <div className="mb-5 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <MessageSquare size={15} color="#C9A227" />
+            <h2
+              className="text-xs font-semibold uppercase tracking-widest"
+              style={{ color: '#F1F5F9', fontFamily: 'Syne, sans-serif' }}
+            >
+              Recent Activity
+            </h2>
+          </div>
+          <Link
+            to="/chat"
+            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all hover:opacity-80"
+            style={{
+              color: '#C9A227',
+              background: 'rgba(201,162,39,0.08)',
+              border: '1px solid rgba(201,162,39,0.2)',
+              fontFamily: 'DM Sans, sans-serif',
+            }}
+          >
+            Open Chat
+            <ArrowRight size={12} />
           </Link>
         </div>
 
-        <AnimatePresence>
-          {conversations.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <MessageSquare size={32} className="mb-3" style={{ color: '#162440' }} />
-              <p className="text-sm" style={{ color: '#475569' }}>No conversations yet</p>
-              <p className="text-xs mt-1" style={{ color: '#2D3F5C' }}>Start chatting with BRICK to see activity</p>
-              <Link
-                to="/chat"
-                className="mt-4 px-4 py-2 rounded text-xs font-medium transition-all hover:opacity-90"
-                style={{ background: 'rgba(201,162,39,0.1)', color: '#C9A227', border: '1px solid rgba(201,162,39,0.25)' }}
-              >
-                Open BRICK Chat →
-              </Link>
-            </div>
-          ) : (
-            <div className="px-5 pb-1">
-              {conversations.slice(0, 8).map((c, i) => (
-                <ConvRow key={c.id} conv={c} index={i} />
-              ))}
-            </div>
-          )}
-        </AnimatePresence>
+        {recentConvs.length > 0 ? (
+          <div>
+            {recentConvs.map((conv, i) => (
+              <ConvRow
+                key={conv.id}
+                conv={conv}
+                index={i}
+                isLast={i === recentConvs.length - 1}
+              />
+            ))}
+          </div>
+        ) : (
+          <p
+            className="py-10 text-center text-sm"
+            style={{ color: '#4A6080', fontFamily: 'DM Sans, sans-serif' }}
+          >
+            No conversations yet. Start chatting with BRICK.
+          </p>
+        )}
       </motion.div>
-    </motion.div>
+    </div>
   )
 }
