@@ -26,6 +26,10 @@ class Config:
     TWILIO_WHATSAPP_NUMBER: str = os.getenv("TWILIO_WHATSAPP_NUMBER", "whatsapp:+14155238886")
     TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
 
+    # Google Sheets
+    GOOGLE_SHEETS_ID: str = os.getenv("GOOGLE_SHEETS_ID", "")
+    GOOGLE_SHEETS_CREDS_PATH: str = os.getenv("GOOGLE_SHEETS_CREDS_PATH", "/opt/flag-ai-platform/google-sheets-creds.json")
+
     # Security
     INGEST_API_KEY: str = os.getenv("INGEST_API_KEY", "flag-ingest-2026")
 

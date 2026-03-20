@@ -296,7 +296,10 @@ function FilterBtn({ label, active, onClick }: { label: string; active: boolean;
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function LeadsPage() {
-  const { data: leadsData } = useQuery({ queryKey: ['leads'], queryFn: api.leads })
+  // Try Google Sheets first (live n8n data), fall back to Supabase
+  const { data: sheetsData } = useQuery({ queryKey: ['leads-sheets'], queryFn: api.leadsFromSheets, retry: 1, staleTime: 30_000 })
+  const { data: supabaseData } = useQuery({ queryKey: ['leads'], queryFn: api.leads, enabled: !sheetsData })
+  const leadsData = sheetsData ?? supabaseData
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL')
   const [statusFilter, setStatusFilter]     = useState<string>('ALL')
   const [sortKey, setSortKey]               = useState<SortKey>('score')

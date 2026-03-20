@@ -80,6 +80,7 @@ export const api = {
   stats: ()                        => request<Stats>('/api/stats'),
   conversations: (limit = 20)      => request<{ conversations: Conversation[]; total: number }>(`/api/conversations?limit=${limit}`),
   leads: ()                        => request<{ leads: Lead[]; total: number }>('/api/leads'),
+  leadsFromSheets: ()              => request<{ leads: Lead[]; total: number; source: string }>('/api/leads/sheets'),
 
   chat: (question: string, history: Array<{ role: string; content: string }>, channel = 'web') =>
     request<ChatResponse>('/api/ask', {

@@ -1,6 +1,6 @@
 {
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "https://your-do-droplet.com/api/$1" },
-    { "source": "/(.*)",     "destination": "/index.html" }
+    { "source": "/api/:path*", "destination": "http://198.199.88.122/api/:path*" },
+    { "source": "/(.*)",       "destination": "/index.html" }
   ]
 }

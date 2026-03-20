@@ -1,10 +1,11 @@
 """
 backend/routes/leads.py
-Lead generation endpoints — list, generate, update, export.
+Lead generation endpoints — list, generate, update, export, Google Sheets live feed.
 """
 
 import csv
 import io
+import os
 import structlog
 from fastapi import APIRouter, HTTPException, Header, BackgroundTasks
 from fastapi.responses import StreamingResponse
@@ -134,6 +135,62 @@ async def update_lead(
     except Exception as e:
         log.error("lead_update_error", error=str(e))
         raise HTTPException(status_code=500, detail="Internal error")
+
+
+# ── Google Sheets live feed ───────────────────────────────────────────────────
+@router.get("/leads/sheets")
+async def leads_from_sheets() -> dict:
+    """Pull live lead data from Google Sheets (updated by n8n workflows)."""
+    try:
+        import gspread
+        from google.oauth2.service_account import Credentials
+
+        creds_path = config.GOOGLE_SHEETS_CREDS_PATH
+        if not os.path.exists(creds_path):
+            raise HTTPException(status_code=503, detail="Google Sheets credentials not configured")
+
+        scopes = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
+        creds = Credentials.from_service_account_file(creds_path, scopes=scopes)
+        gc = gspread.authorize(creds)
+        sh = gc.open_by_key(config.GOOGLE_SHEETS_ID)
+        worksheet = sh.get_worksheet(0)
+        records = worksheet.get_all_records()
+
+        leads = []
+        for i, row in enumerate(records):
+            # Normalize status: spaces → underscores, lowercase
+            raw_status = str(row.get("Status", "new")).lower().strip().replace(" ", "_")
+            valid_statuses = {"new", "contacted", "meeting_set", "converted"}
+            status = raw_status if raw_status in valid_statuses else "new"
+
+            score_raw = row.get("Score", row.get("score", 0))
+            try:
+                score = int(float(str(score_raw))) if score_raw else 0
+            except (ValueError, TypeError):
+                score = 0
+
+            leads.append({
+                "id": str(row.get("ID", i + 1)),
+                "name": str(row.get("Name", row.get("name", ""))),
+                "title": str(row.get("Title", row.get("title", ""))),
+                "email": str(row.get("Email", row.get("email", ""))),
+                "phone": str(row.get("Phone", row.get("phone", ""))),
+                "county": str(row.get("County", row.get("county", ""))),
+                "state": str(row.get("State", row.get("state", "TX"))),
+                "category": str(row.get("Category", row.get("category", "CIP"))),
+                "score": score,
+                "status": status,
+                "research_notes": str(row.get("Notes", row.get("research_notes", ""))),
+                "created_at": str(row.get("Date", row.get("created_at", ""))),
+            })
+
+        log.info("sheets_leads_fetched", count=len(leads))
+        return {"leads": leads, "total": len(leads), "source": "google_sheets"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.error("sheets_error", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Sheets error: {str(e)}")
 
 
 # ── Export CSV ────────────────────────────────────────────────────────────────

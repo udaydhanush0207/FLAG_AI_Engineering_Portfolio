@@ -38,7 +38,8 @@
       "Bash(sshpass -p 'digital@123Ocean' ssh -o StrictHostKeyChecking=no root@198.199.88.122 \"echo connected && whoami\")",
       "Bash(python3 -c \"import paramiko; print\\(''''paramiko ok''''\\)\")",
       "Bash(pip install:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(~/.bun/bin/vercel ls:*)"
     ],
     "deny": [],
     "ask": []
