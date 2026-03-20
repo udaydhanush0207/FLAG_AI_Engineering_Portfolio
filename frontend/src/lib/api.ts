@@ -54,12 +54,14 @@ export interface Lead {
   name: string
   title?: string
   email?: string
+  phone?: string
   county: string
   state: string
   category?: string
   score: number
   status: string
   research_notes?: string
+  linkedin?: string
   created_at: string
 }
 

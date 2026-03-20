@@ -154,51 +154,46 @@ async def leads_from_sheets() -> dict:
         gc = gspread.authorize(creds)
         sh = gc.open_by_key(config.GOOGLE_SHEETS_ID)
         worksheet = sh.get_worksheet(0)
-        # Use get_all_values() to handle sheets with duplicate/empty headers
         all_rows = worksheet.get_all_values()
         if not all_rows:
             return {"leads": [], "total": 0, "source": "google_sheets"}
 
-        # First non-empty row is the header
-        headers = [h.strip().lower() for h in all_rows[0]]
-        data_rows = all_rows[1:]
+        # Sheet has NO header row — columns are positional:
+        # 0:first_name 1:last_name 2:title 3:city/county 4:state
+        # 5:email 6:phone 7:mgo_confirmed 8:linkedin 9:notes 10:message
+        def cell(row: list, idx: int) -> str:
+            return str(row[idx]).strip() if idx < len(row) else ""
 
-        def col(row: list, *names: str) -> str:
-            """Get first matching column value, case-insensitive."""
-            for name in names:
-                n = name.lower().strip()
-                if n in headers:
-                    val = row[headers.index(n)] if headers.index(n) < len(row) else ""
-                    if val:
-                        return str(val).strip()
-            return ""
-
-        valid_statuses = {"new", "contacted", "meeting_set", "converted"}
         leads = []
-        for i, row in enumerate(data_rows):
-            if not any(row):  # skip fully empty rows
+        for i, row in enumerate(all_rows):
+            if not any(row):
                 continue
-            raw_status = col(row, "status").lower().replace(" ", "_")
-            status = raw_status if raw_status in valid_statuses else "new"
-            score_raw = col(row, "score")
-            try:
-                score = int(float(score_raw)) if score_raw else 0
-            except (ValueError, TypeError):
-                score = 0
+            first = cell(row, 0)
+            last = cell(row, 1)
+            name = f"{first} {last}".strip()
+            if not name:
+                continue
+
+            mgo_confirmed = cell(row, 7).lower() in {"yes", "true", "1", "x"}
+            category = "BOTH" if mgo_confirmed else "CIP"
+            linkedin = cell(row, 8)
+            notes = cell(row, 9)
+            message = cell(row, 10)
 
             leads.append({
-                "id": col(row, "id") or str(i + 1),
-                "name": col(row, "name", "full name"),
-                "title": col(row, "title", "job title"),
-                "email": col(row, "email"),
-                "phone": col(row, "phone", "phone number"),
-                "county": col(row, "county", "municipality"),
-                "state": col(row, "state") or "TX",
-                "category": col(row, "category", "type") or "CIP",
-                "score": score,
-                "status": status,
-                "research_notes": col(row, "notes", "research_notes"),
-                "created_at": col(row, "date", "created_at"),
+                "id": str(i + 1),
+                "name": name,
+                "title": cell(row, 2),
+                "email": cell(row, 5),
+                "phone": cell(row, 6),
+                "county": cell(row, 3),
+                "state": cell(row, 4) or "TX",
+                "category": category,
+                "score": 8 if mgo_confirmed else 6,
+                "status": "new",
+                "research_notes": f"{notes}\n\n{message}".strip() if (notes or message) else "",
+                "created_at": "",
+                "linkedin": linkedin,
             })
 
         log.info("sheets_leads_fetched", count=len(leads))
