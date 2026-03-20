@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api, type Lead } from '../lib/api'
 import { Download, Filter, ChevronUp, ChevronDown, Users, Star } from 'lucide-react'
@@ -297,8 +297,23 @@ function FilterBtn({ label, active, onClick }: { label: string; active: boolean;
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function LeadsPage() {
   // Try Google Sheets first (live n8n data), fall back to Supabase
-  const { data: sheetsData } = useQuery({ queryKey: ['leads-sheets'], queryFn: api.leadsFromSheets, retry: 1, staleTime: 30_000 })
+  const { data: sheetsData, dataUpdatedAt } = useQuery({
+    queryKey: ['leads-sheets'],
+    queryFn: api.leadsFromSheets,
+    retry: 1,
+    staleTime: 30_000,
+    refetchInterval: 30_000,
+  })
   const { data: supabaseData } = useQuery({ queryKey: ['leads'], queryFn: api.leads, enabled: !sheetsData })
+
+  const [secondsAgo, setSecondsAgo] = useState(0)
+  useEffect(() => {
+    setSecondsAgo(0)
+    const interval = setInterval(() => {
+      setSecondsAgo(Math.round((Date.now() - dataUpdatedAt) / 1000))
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [dataUpdatedAt])
   const leadsData = sheetsData ?? supabaseData
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL')
   const [statusFilter, setStatusFilter]     = useState<string>('ALL')
@@ -516,7 +531,9 @@ export default function LeadsPage() {
             {leads.length} records
           </span>
           <span className="text-xs font-mono" style={{ color: '#2D3F5C' }}>
-            AI lead generation · Phase 4
+            {dataUpdatedAt > 0
+              ? `Last synced: ${secondsAgo}s ago · auto-refresh every 30s`
+              : 'AI lead generation · Phase 4'}
           </span>
         </div>
       </motion.div>
