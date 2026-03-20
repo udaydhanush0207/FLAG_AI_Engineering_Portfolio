@@ -77,11 +77,14 @@
 - [x] Connect all pages to backend API via TanStack Query
 - [ ] Add WebSocket for real-time updates (deferred)
 - [x] Deploy to Vercel → https://flag-ai-platform.vercel.app
-- [ ] Verify: dashboard shows live data (needs DigitalOcean backend URL in VITE_API_URL)
+- [x] Fix Vercel → DO connection: vercel.json rewrites /api/* → http://198.199.88.122 (fixes HTTPS/HTTP mixed content)
+- [x] Remove VITE_API_URL, use relative paths everywhere (vite proxy for local, vercel rewrites for prod)
+- [x] Leads page: 30s refetchInterval + "Last synced: Xs ago" indicator
+- [ ] ⚠️ NEEDS MANUAL STEP: Vercel CLI token expired. Go to vercel.com → flag-ai-platform → Deployments → Redeploy latest (master push: c4a418d)
 
 ## Phase 6: Integration + Testing (Day 6)
 
-- [ ] End-to-end test: Web chat → correct answer with sources
+- [x] End-to-end test: Web chat → correct answer with sources ✓ (DO direct: "FLAG manages $3.5B / 127 projects")
 - [ ] End-to-end test: WhatsApp → correct answer
 - [ ] End-to-end test: Telegram → correct answer
 - [ ] End-to-end test: Voice message → transcribed + answered
