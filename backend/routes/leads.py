@@ -154,34 +154,51 @@ async def leads_from_sheets() -> dict:
         gc = gspread.authorize(creds)
         sh = gc.open_by_key(config.GOOGLE_SHEETS_ID)
         worksheet = sh.get_worksheet(0)
-        records = worksheet.get_all_records()
+        # Use get_all_values() to handle sheets with duplicate/empty headers
+        all_rows = worksheet.get_all_values()
+        if not all_rows:
+            return {"leads": [], "total": 0, "source": "google_sheets"}
 
+        # First non-empty row is the header
+        headers = [h.strip().lower() for h in all_rows[0]]
+        data_rows = all_rows[1:]
+
+        def col(row: list, *names: str) -> str:
+            """Get first matching column value, case-insensitive."""
+            for name in names:
+                n = name.lower().strip()
+                if n in headers:
+                    val = row[headers.index(n)] if headers.index(n) < len(row) else ""
+                    if val:
+                        return str(val).strip()
+            return ""
+
+        valid_statuses = {"new", "contacted", "meeting_set", "converted"}
         leads = []
-        for i, row in enumerate(records):
-            # Normalize status: spaces → underscores, lowercase
-            raw_status = str(row.get("Status", "new")).lower().strip().replace(" ", "_")
-            valid_statuses = {"new", "contacted", "meeting_set", "converted"}
+        for i, row in enumerate(data_rows):
+            if not any(row):  # skip fully empty rows
+                continue
+            raw_status = col(row, "status").lower().replace(" ", "_")
             status = raw_status if raw_status in valid_statuses else "new"
-
-            score_raw = row.get("Score", row.get("score", 0))
+            score_raw = col(row, "score")
             try:
-                score = int(float(str(score_raw))) if score_raw else 0
+                score = int(float(score_raw)) if score_raw else 0
             except (ValueError, TypeError):
                 score = 0
 
             leads.append({
-                "id": str(row.get("ID", i + 1)),
-                "name": str(row.get("Name", row.get("name", ""))),
-                "title": str(row.get("Title", row.get("title", ""))),
-                "email": str(row.get("Email", row.get("email", ""))),
-                "phone": str(row.get("Phone", row.get("phone", ""))),
-                "county": str(row.get("County", row.get("county", ""))),
-                "state": str(row.get("State", row.get("state", "TX"))),
-                "category": str(row.get("Category", row.get("category", "CIP"))),
+                "id": col(row, "id") or str(i + 1),
+                "name": col(row, "name", "full name"),
+                "title": col(row, "title", "job title"),
+                "email": col(row, "email"),
+                "phone": col(row, "phone", "phone number"),
+                "county": col(row, "county", "municipality"),
+                "state": col(row, "state") or "TX",
+                "category": col(row, "category", "type") or "CIP",
                 "score": score,
                 "status": status,
-                "research_notes": str(row.get("Notes", row.get("research_notes", ""))),
-                "created_at": str(row.get("Date", row.get("created_at", ""))),
+                "research_notes": col(row, "notes", "research_notes"),
+                "created_at": col(row, "date", "created_at"),
             })
 
         log.info("sheets_leads_fetched", count=len(leads))
